@@ -1,0 +1,11 @@
+rm -rf ~/.minikube
+echo "Deleted old Kubernetes cluster"
+minikube start
+echo "Kubernetes started"
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.0.0-rc3/aio/deploy/recommended.yaml
+echo "Dashboard created"
+kubectl proxy &
+echo "Proxy started"
+kubectl -n kube-system describe secret $(kubectl -n kube-system get secret | awk '/^deployment-controller-token-/{print $1}') | awk '$1=="token:"{print $2}'
+echo "copy and paste the keys"
+open http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/#/overview?namespace=default
