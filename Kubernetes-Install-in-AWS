@@ -1,0 +1,125 @@
+1. Create EC2 RHEL instance
+
+2. Install aws-cli
+# yum update -y
+# curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+# yum install zip
+# unzip awscliv2.zip
+# sudo ./aws/install
+
+3. Create and attach IAM role to EC2 Instance.
+Kops need permissions to access ( Create a Adminstrator acces for now )
+S3
+EC2
+VPC
+Route53
+Autoscaling
+
+4. Install Kops on EC2
+# curl -LO https://github.com/kubernetes/kops/releases/download/$(curl -s https://api.github.com/repos/kubernetes/kops/releases/latest | grep tag_name | cut -d '"' -f 4)/kops-linux-amd64
+Change the Permissions to execute
+# chmod +x kops-linux-amd64
+Move the Installation file to the kops location
+# sudo mv kops-linux-amd64 /usr/local/bin/kops
+
+5. Create S3 bucket in AWS
+S3 bucket is used by kubernetes to persist cluster state, lets create s3 bucket using aws cli Note: Make sure you choose bucket name that is uniqe accross all aws accounts
+# aws s3 mb s3://atyerah9.kops --region us-east-2              
+>>>>  or create a bucket directly from console
+
+6. Create private hosted zone in AWS Route53
+Head over to aws Route53 and create hostedzone
+Choose name for example (atyerah9.in)
+Choose type as privated hosted zone for VPC
+Select default vpc in the region you are setting up your cluster
+Hit create
+atyerah9.in is the name i have created
+
+
+7. Configure environment variables.
+Open .bashrc file
+vi ~/.bashrc
+Add following content into .bashrc, you can choose any arbitary name for cluster and make sure buck name matches the one you created in previous step.
+# export KOPS_CLUSTER_NAME=atyerah9.in
+# export KOPS_STATE_STORE=s3://atyerah9.kops
+Then running command to reflect variables added to .bashrc
+source ~/.bashrc
+
+
+8. Create ssh key pair
+This keypair is used for ssh into kubernetes cluster
+# ssh-keygen
+enter till end
+
+9. Create a Kubernetes cluster definition this wont delete the cluster
+# kops create cluster --state=${KOPS_STATE_STORE} --node-count=2 --master-size=t2.micro --node-size=t2.micro --zones=us-east-2a,us-east-2b --name=${KOPS_CLUSTER_NAME} --dns private --master-count 1
+
+
+10. Create kubernetes cluster this command will create the cluster
+# kops update cluster --yes
+Above command may take some time to create the required infrastructure resources on AWS. Execute the validate command to check its status and wait until the cluster becomes ready
+
+11. Do the validation if the cluster is create and ready
+Note: wait for atleast 10 minutes because it has to create one master and 2 nodes and VPC security groups and DNS and many more
+# kops validate cluster
+For the above above command, you might see validation failed error initially when you create cluster and it is expected behaviour, you have to wait for some more time and check again.
+
+
+12. Paste below command to get the output for every 10 seconds
+# watch -n 0.10 "kops validate cluster"
+Output should be Your cluster atyerah9.in is ready
+
+13. Login to the Master machine
+# ssh admin@api.atyerah9.in
+Here admin is the user name
+atyerah9.in is the DNS name
+
+14. Run some basic commands
+# kubectl get nodes
+exit
+
+15. Create a dashboard from kubernetes official website
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.0.0/aio/deploy/recommended.yaml
+
+16. Accessing the dashboard
+# https://ec2-18-224-63-246.us-east-2.compute.amazonaws.com
+Here DNS or IP should be master one.
+
+17. For password
+# kubectl config view
+Username
+# admin
+Password
+# T4HxiJDBLtYXtaW1HkFA9eVEyXobcYC3    ( like this )
+
+18. To run the proxy enable outside the world
+# kubectl proxy --port=8080 &
+
+19. To get complete dashboard you have use as below
+Add this to DNS /api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/#/overview?namespace=default
+# https://ec2-18-224-55-136.us-east-2.compute.amazonaws.com/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/#/login
+
+20. To get the password we have to create another dashboard
+# kubectl create serviceaccount dashboard -n default
+
+20. Now you should provide the token to get complete dashboard access
+# kubectl get secret $(kubectl get serviceaccount dashboard -o jsonpath="{.secrets[0].name}") -o jsonpath="{.data.token}" | base64 --decode
+
+21. Now just copy and paste the output on the kubernetes dashboard
+Output would be something like below
+#eyJhbGciOiJSUzI1NiIsImtpZCI6IjZZZktmdU5TbWtiV0xJRzJ1eGljcjA1U1YxRS1hdk05U05HNHo4d1VndHMifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJkZWZhdWx0Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZWNyZXQubmFtZSI6ImRhc2hib2FyZC10b2tlbi12czluaCIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50Lm5hbWUiOiJkYXNoYm9hcmQiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC51aWQiOiJjZWE5ZmI4MC1lYWVjLTQ5ZWYtODdmNC1jMjAyOGEwM2Y4OTEiLCJzdWIiOiJzeXN0ZW06c2VydmljZWFjY291bnQ6ZGVmYXVsdDpkYXNoYm9hcmQifQ.AVvEmaqBdx1DfvVTIoXuG6kFjYm1kKmrRD8D5xpC_kRDSYjg2wOzzuiwWeao6B6CmFh9IPN5mejy2U6JdVURG1ivlre7k7_PplEdTe0wgbKqjerViHqRyaVcrxa31XN8SHosfsK0zwAc-CnxV0MH7_SXrD2M4SEj4_QtHqvkb2VV3O_uIJLaqPuGo6PJV-U7fQDHk68k4ZgRLVTqTyBt6Ea_dsD0Ebh0n2jxu1WvOcFOvgRclWQQZ2cQIojCmdiiGCqBL4quXJhfbqJt5DeofKdM3CDiNsRUpOzgMEt8SmdBXSkwrX425XXNljN_g9y2KYUY4NS8DPY2hTPM04tQ3w
+
+22. If you fail to create the dashboard try below also or if you are unable to pods do as below
+# kubectl create serviceaccount dashboard -n default
+# kubectl create clusterrolebinding dashboard-admin -n default --clusterrole=cluster-admin --serviceaccount=default:dashboard
+
+23. How do we Destroy the kubernetes cluster
+# kops delete cluster  --yes
+Example
+# kops delete cluster --name=atyerah9.in --yes
+
+
+Extra notes
+
+1. Kubernetes dashboard link
+https://kubernetes.io/docs/tasks/access-application-cluster/web-ui-dashboard/
